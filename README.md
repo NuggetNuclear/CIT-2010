@@ -15,7 +15,7 @@ Tarea N°1 Sistemas Operativos: implementar un <b>chat comunitario en C++</b> co
 ## 🗺️ Roadmap
 
 **Progreso general**  
-<progress value="10" max="100"></progress> **10%**
+<progress value="15" max="100"></progress> **15%**
 
 ---
 
