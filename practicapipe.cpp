@@ -28,7 +28,7 @@ int main() {
     } else {
         // padre escribe en la pipe
         close(fd[0]); // cerrar lectura
-        const char* msg = "wuaja \0 idsj";
+        const char* msg = "wuaja i\0 idsj";
         write(fd[1], msg, strlen(msg));
         close(fd[1]);
     }
