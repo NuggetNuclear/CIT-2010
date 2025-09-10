@@ -11,8 +11,8 @@ int main() {
     mkfifo(C2O, 0666);
     std::cout << "cliente iniciado, enviando mensaje al orquestador" << std::endl;
     int wfd = open(C2O, O_WRONLY);
-    const char* msg = "mensaje\n";
-    write(wfd, msg, std::strlen(msg)); // envío directo, sin bucle
+    const char* msg = "laFokinPrueba\n";
+    write(wfd, msg, std::strlen(msg));
     close(wfd);
     return 0;
 }
