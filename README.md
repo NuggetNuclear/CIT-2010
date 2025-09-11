@@ -19,12 +19,12 @@ Tarea N°1 Sistemas Operativos: implementar un <b>chat comunitario en C++</b> co
 ---
 
 ### Fase 1 — Comunicación básica
-- ✅ [T-001] **Orchestrator + cliente inicial con named pipes** — *10%*  
+- ✅ [T-001] **Orchestrator + cliente inicial con named pipes** — *10%*  \
   Enlace: [commit 592bd7c](https://github.com/NuggetNuclear/CIT-2010_Tarea-1/tree/592bd7c00f18690340dc3c23eeca26f3b898190b)  
-- ✅ [T-002] **Bidireccionalidad completa (lectura/escritura en ambos extremos)** — *5%*  
+- ✅ [T-002] **Bidireccionalidad completa (lectura/escritura en ambos extremos)** — *5%* \
   Enlace: [commit B39172A](https://github.com/NuggetNuclear/CIT-2010_Tarea-1/tree/b39172aefa152e243a02de2dd3da2ee1f15d58b1)
 ### Fase 2 — Procesamiento de mensajes
-- ✅ [T-003] **Parsear y mostrar mensajes en el orchestrator** — *8%*
+- ✅ [T-003] **Parsear y mostrar mensajes en el orchestrator** — *8%* \
   Enlace: [commit 6b0fe9e](https://github.com/NuggetNuclear/CIT-2010_Tarea-1/tree/6b0fe9eb621082ab3970f8bf0350c9362a700f31)
 - ⬜ [T-004] **Implementar validación y manejo de errores** — *7%*  
 
