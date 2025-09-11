@@ -1,8 +1,8 @@
 #include <iostream>
-#include <unistd.h>   // pipe(), fork(), read(), write()
-#include <cstring>    // strlen()
-#include <sys/stat.h> // mkfifo()
-#include <fcntl.h>    // open() y flags O_RDONLY, O_WRONLY
+#include <unistd.h>
+#include <cstring>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 // Proceso central o tambien 'Orquestador' de la comunicacion entre procesos
 
@@ -19,5 +19,21 @@ int main() {
 
     int clientToOrch = open(C2O, O_RDONLY); // Cliente --> Orquestador
     int orchToClient = open(O2C, O_WRONLY); // Orquestador --> Cliente
- 
+    char buffer[1024];
+
+    while(true) {
+        ssize_t bytesRead = read(clientToOrch, buffer, sizeof(buffer) - 1);
+
+        if(bytesRead > 0) {
+            buffer[bytesRead] = '\0';
+            std::cout << buffer << std::endl;
+            (void)write(orchToClient, "OK Reply", 8);
+        } else if (bytesRead == 0) {
+            std::cout << "Cliente desconectado" << std::endl;
+            break;
+        } else {
+            std::cerr << "Error al leer el mensaje" << std::endl;
+            break;
+        }
+    }
 }
