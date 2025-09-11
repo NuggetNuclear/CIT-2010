@@ -23,7 +23,7 @@ int main() {
 
     // Enviar un saludo inicial
     {
-        std::string conectionMsg = "Proceso " + std::to_string(clienteID) + " se conectó al chat\n";
+        std::string conectionMsg = "[" + std::to_string(clienteID) + "]-Proceso conectado\n";
         (void)write(c2o, conectionMsg.c_str(), conectionMsg.size());
     }
 
@@ -33,12 +33,12 @@ int main() {
     while (true) {
         std::cout << "> ";
         if (!std::getline(std::cin, line)) {
-            std::string leaveMsg = "Proceso " + std::to_string(clienteID) + " se desconectó\n";
+            std::string leaveMsg = "[" + std::to_string(clienteID) + "]-Proceso desconectado\n";
             (void)write(c2o, leaveMsg.c_str(), leaveMsg.size());
             break;
         }
 
-        std::string payload = "[" + std::to_string(clienteID) + "] " + line + "\n";
+        std::string payload = "[" + std::to_string(clienteID) + "]-" + line + "\n";
         (void)write(c2o, payload.c_str(), payload.size());
 
         ssize_t n = read(o2c, buffer, sizeof(buffer) - 1);
