@@ -1,7 +1,6 @@
 <p align="center">
   <img src="https://img.shields.io/badge/status-en%20progreso-informational" alt="status">
   <img src="https://img.shields.io/badge/CIT2010-8A2BE2">
-  <img src="https://img.shields.io/badge/roadmap-15%25-blue" alt="roadmap">
 </p>
 
 <h1 align="center">📦 Sistemas Operativos #1</h1>
