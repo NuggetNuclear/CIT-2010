@@ -3,49 +3,47 @@
   <img src="https://img.shields.io/badge/CIT2010-8A2BE2">
 </p>
 
-<h1 align="center">📦 Sistemas Operativos #1</h1>
+<h1 align="center">📦 Sistemas Operativos #1 — Chat comunitario en C++</h1>
 
-<p align="center">
-Tarea N°1 Sistemas Operativos: implementar un <b>chat comunitario en C++</b> con procesos independientes (clientes), un proceso central (orchestrator) y un proceso moderador encargado de sancionar procesos reportados.
-</p>
+**Descripción breve**  
+Chat de múltiples procesos en C++: un proceso central (orchestrator) que gestiona la conversación y múltiples procesos cliente, todos independientes y no emparentados, conectados mediante *named pipes* (FIFOs) **bidireccionales**. Sin hilos (threads), sin mutex ni semáforos; uso de `select()` para multiplexar I/O. Requiere entorno **UNIX**.  
+*(Condiciones y requisitos según enunciado y rúbrica).*  
 
 ---
 
 ## 🗺️ Roadmap
 
-**Progreso general**  
-**23%**
-
----
-
 ### Fase 1 — Comunicación básica
-- ✅ [T-001] **Orchestrator + cliente inicial con named pipes** — *10%*  \
-  Enlace: [commit 592bd7c](https://github.com/NuggetNuclear/CIT-2010_Tarea-1/tree/592bd7c00f18690340dc3c23eeca26f3b898190b)  
-- ✅ [T-002] **Bidireccionalidad completa (lectura/escritura en ambos extremos)** — *5%* \
-  Enlace: [commit B39172A](https://github.com/NuggetNuclear/CIT-2010_Tarea-1/tree/b39172aefa152e243a02de2dd3da2ee1f15d58b1)
+- [x] Orchestrator + cliente inicial con named pipes
+- [x] Bidireccionalidad (lectura/escritura en ambos extremos)
+
 ### Fase 2 — Procesamiento de mensajes
-- ✅ [T-003] **Parsear y mostrar mensajes en el orchestrator** — *8%* \
-  Enlace: [commit 6b0fe9e](https://github.com/NuggetNuclear/CIT-2010_Tarea-1/tree/6b0fe9eb621082ab3970f8bf0350c9362a700f31)
-- ⬜ [T-004] **Implementar validación y manejo de errores** — *7%*  
+- [x] Parsear y mostrar mensajes en el orchestrator
+- [x] Validación y manejo de errores básicos
 
 ### Fase 3 — Broadcast (comunidad)
-- ⬜ [T-005] **Redirigir mensajes de un cliente a todos los demás** — *10%*  
-- ⬜ [T-006] **Formatear mensajes (nick, pid, hora)** — *5%*  
+- [x] Redirigir mensajes de un cliente a todos los demás
+- [ ] Formatear mensajes (nick, pid, hora) // TODO
 
 ### Fase 4 — Persistencia en chat
-- ⬜ [T-007] **Mantener cliente vivo tras enviar mensajes** — *8%*  
-- ⬜ [T-008] **Multiplexación I/O (`select`/`poll`)** — *12%*  
+- [x] Mantener cliente vivo tras enviar mensajes (loop interactivo)
+- [x] Multiplexación I/O con `select`
 
 ### Fase 5 — Moderación
-- ⬜ [T-009] **Proceso moderador independiente** — *5%*  
-- ⬜ [T-010] **Clientes pueden enviar `reportar pid`** — *4%*  
-- ⬜ [T-011] **Contador de reportes + expulsión a los 10** — *6%*  
+- [ ] Proceso moderador independiente // TODO
+- [ ] Comando `reportar <pid>` y expulsión a los 10 reportes // TODO
 
 ### Fase 6 — Replicación de clientes
-- ⬜ [T-012] **Funcion de compartir chat (Duplicar cliente)** — *13%*   
+- [ ] Duplicar cliente (`/share`) // TODO
 
 ### Fase 7 — Pruebas finales
-- ⬜ [T-013] **Pruebas de desconexión y cierre limpio de pipes** — *5%*  
-- ⬜ [T-014] **Pruebas de estrés (múltiples clientes simultáneos)** — *2%*  
+- [ ] Pruebas de desconexión y cierre limpio de pipes (más casos) // TODO
+- [ ] Pruebas de estrés (múltiples clientes simultáneos) // TODO
 
 ---
+
+## 🏗️ Compilación
+
+```bash
+g++ -std=c++17 central.cpp -o central
+g++ -std=c++17 cliente.cpp -o cliente
