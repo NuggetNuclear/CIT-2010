@@ -1,294 +1,160 @@
+# Sistemas Operativos — Chat comunitario (T1)
 
-# 📦 Sistemas Operativos — Chat comunitario
-**Tres procesos:** `central` (orquestador), `client` (N terminales), `moderator` (contador de reportes). Comunicación por **FIFOs (named pipes)**; multiplexación de I/O con **`select()`**; manejo de señales (`SIGINT`, `SIGPIPE`) y errores (`EINTR`, `EPIPE`, `EAGAIN/EWOULDBLOCK`).
-
-> Desarrollado en Linux 🐧 (Ubuntu 24.04).
+**Plataforma:** Linux (Ubuntu) • **Lenguaje:** C/C++17 • **IPC:** FIFOs (named pipes) • **Multiplexación:** `select()` • **Sin threads**
 
 ---
 
-## 0) Las pipes 
+## TL;DR — Checklist de la rúbrica (cumplimiento rápido)
 
-
-- **C2O** (`/tmp/orch_c2o.fifo`): *uplink* común (clientes → central).
-- **O2C** (`/tmp/orch_o2c_<PID>.fifo`): *downlink* por cliente (central → ese cliente).
-- **reports** (`/tmp/orch_reports.fifo`): central → moderator (líneas con PIDs reportados).
+- **Procesos requeridos:** `central` (orquestador), `client` (N instancias), `moderator` (conteo de reportes) — *implementados*.
+- **Comunicación por FIFOs:** C2O común (`/tmp/orch_c2o.fifo`), O2C por PID (`/tmp/orch_o2c_<PID>.fifo`), y `reports` (`/tmp/orch_reports.fifo`) — *implementado*.
+- **Protocolo línea‑a‑línea:** `"[PID]-<texto>\n"`; ACK al emisor y broadcast a otros — *implementado*.
+- **Clientes independientes en terminales distintas:** conexión/desconexión libre (`/leave` o EOF) — *implementado*.
+- **Moderación/expulsión:** `/report <pid>` suma en `moderator`; a la 10.ª denuncia → `SIGKILL` — *implementado*.
+- **Planificación/explicación técnica:** `select()` (bloqueo eficiente), difusión **FCFS** por orden de llegada en C2O — *documentado aquí*.
+- **Ejecución reproducible:** instrucciones con **Makefile** y **g++** directo — *incluidas*.
+- **Restricciones del enunciado:** UNIX, FIFOs, sin hilos/semáforos; manejo de señales/errores — *cumplidas*.
 
 ---
 
-## 1) Compilación y ejecución
+## 1) Cumplimiento del enunciado
 
+1. **Múltiples procesos independientes:** `central`, `client` (N terminales), `moderator`.
+2. **IPC por pipes con nombre (FIFOs):**
+   - **C2O** `/tmp/orch_c2o.fifo` (clientes → central, uplink común).
+   - **O2C** `/tmp/orch_o2c_<PID>.fifo` (central → cliente, downlink por PID).
+   - **reports** `/tmp/orch_reports.fifo` (central → moderator).
+3. **Formato de mensajes y difusión:** cada línea del cliente llega al `central`, este **ACK** al emisor y **difunde** a los demás.
+4. **Comandos mínimos:**
+   - `/leave`: termina el cliente limpiamente.
+   - `/report <pid>`: informa al moderador (no se difunde).
+   - `/share`: abre **otro** cliente (nuevo proceso) con `fork()+execlp()`.
+5. **Moderación:** `moderator` acumula reportes por PID; al llegar a **10**, intenta `kill(SIGKILL)` y reinicia el contador.
+6. **Planificación / concurrencia:** sin threads; `select()` para multiplexar I/O; orden de servicio **FCFS** según llegada a C2O.
+7. **Robustez:** ignorar `SIGPIPE`, reaperturas tras `EOF`, keep‑alive en FIFOs, reintentos `ENXIO/ENOENT`, framing por líneas.
+8. **README:** contiene explicación de ejecución, funcionamiento e **hipótesis/decisiones de diseño** (esta sección).
+
+---
+
+## 2) Arquitectura general
+
+**Procesos**
+- `central`: orquesta, registra y difunde. Mantiene `PID → FD(O2C)`. Envía **ACK** al emisor y **broadcast** al resto. Abre `reports` y lanza `moderator` al inicio.
+- `client`: instancia interactiva (N terminales). Escribe en C2O, lee su O2C, ejecuta comandos (`/leave`, `/share`, `/report`).
+- `moderator`: lee PIDs desde `reports`, cuenta por PID y expulsa con `SIGKILL` al 10.º reporte.
+
+**FIFOs**
+- **C2O** `/tmp/orch_c2o.fifo`
+- **O2C** `/tmp/orch_o2c_<PID>.fifo`
+- **reports** `/tmp/orch_reports.fifo`
+
+**Protocolo**
+- Cliente → Central: `"[<pid>]-<texto>\n"`
+- Respuestas del central:
+  - **ACK** al emisor: `"[CENTRAL HH:MM:SS] ACK\n"`
+  - **Broadcast** a otros: `"[HH:MM:SS][PID <pid>] <texto>\n"`
+
+---
+
+## 3) Compilación y ejecución
+
+### 3.2 Compilación **manual**
 ```bash
 g++ central.cpp -o central
 g++ client.cpp -o client
 g++ moderator.cpp -o moderator
 ```
 
-Lanzar en terminales separadas, en este orden:
-
+Ejecución (en terminales separadas, mismo flujo que arriba):
 ```bash
 ./central
-./client   # abre un cliente (se puede abrir mas de uno)
-# opcional, ya que central debe lanzar el proceso automaticamente:
-./moderator
+./client
+./client   # opcional: más clientes
+./moderator   # si central no lo lanza automáticamente
 ```
 
-Limpieza de FIFOs:
+**Limpieza de FIFOs (si quedaran colgadas):**
 ```bash
 rm -f /tmp/orch_c2o.fifo /tmp/orch_o2c_*.fifo /tmp/orch_reports.fifo
 ```
 
 ---
 
-## 2) Protocolo de línea (cliente → central)
+## 4) Planificación y manejo de concurrencia
 
-Cada envío es **una línea** terminada en `\n` con el formato:
-```
-[<pid>]-<texto>\n
-```
-
-Tipos de mensajes del cliente:
-- Conexion: `"[PID]-Proceso conectado\n"` (enviado automáticamente al conectar).
-- Mensaje normal: `"[PID]-<texto>\n"`.
-- Reporte: comando `/report <pid>` ⇒ `"[PID]-reportar <pid>\n"`.
-- Desconexión: `/leave` ⇒ `"[PID]-Proceso desconectado\n"`.
-
-Respuestas de la central:
-- **ACK al emisor**: `"[CENTRAL HH:MM:SS] ACK\n"`
-- **Broadcast a otros**: `"[HH:MM:SS][PID <pid>] <texto>\n"`
+- **Central**: espera datos en **C2O** con `select()` (bloqueo eficiente). Al recibir, procesa y difunde en **orden de llegada (FCFS)**.
+- **Cliente**: `select()` sobre **STDIN** y **su O2C** para leer difusiones mientras el usuario escribe.
+- **Sin threads**: sólo procesos + multiplexación. Evita condiciones de carrera a nivel de memoria compartida.
 
 ---
 
-## 3) Flujo detallado de mensajes
+## 5) Robustez (señales, errores, aperturas)
 
-**Algoritmo de planificación**
-La central procesa eventos en orden de llegada (FIFO) sobre el canal C2O. La multiplexación es con select() (E/S no bloqueante). Cada mensaje se delimita por \n, se reconoce el emisor por PID y se difunde de forma serializada a todos los demás clientes. No hay prioridades.
-
-### 3.1 Conexión de cliente
-1. `client` crea/abre su **O2C** (`/tmp/orch_o2c_<PID>.fifo`) en **RDWR** para evitar bloqueos si el otro extremo aún no está listo (8.1).
-2. Abre **C2O** en **WR** con reintentos; limpia `O_NONBLOCK` para simplificar escrituras (8.2).
-3. Envía línea “Proceso conectado” por C2O.
-4. `central` detecta el PID; si no tiene FD para ese PID, **abre O2C** y guarda `writerByPid[PID] = FD`.
-5. `central` envía **welcome** al O2C del nuevo cliente; el cliente lo muestra y deja un `prompt`.
-
-### 3.2 Mensajes normales
-1. `client` envía `"[PID]-texto\n"`.
-2. `central` parsea → **ACK** al emisor y **broadcast** a los demás clientes.
-3. Por fin se imprime bien y no rompe la terminal😭.
-
-### 3.3 Reportes (`/report <pid>`)
-1. `client` valida y envía: `"[PID]-reportar <pid>\n"`.
-2. `central` no difunde; **escribe `<pid>\n`** al **reports** FIFO.
-3. `moderator` acumula contadores por PID; cuando alcanza **10** reportes, ejecuta `kill(pid, SIGKILL)` y reinicia el contador.
-
-### 3.4 Desconexión
-- Con `/leave` o EOF en `stdin`, el cliente envía “Proceso desconectado”, cierra descriptores y termina.
-- `central` borrará el FD del mapa cuando la próxima escritura a ese cliente falle.
+- **`SIGPIPE` ignorada**: evita abortos en `write()` sin lector; se maneja **`EPIPE`** cerrando y limpiando.
+- **Reintentos** al abrir en `O_WRONLY|O_NONBLOCK` (casos `ENXIO/ENOENT`) hasta que el extremo remoto exista; luego **limpiar `O_NONBLOCK`** con `fcntl` para volver a escrituras bloqueantes.
+- **Keep‑alive** en FIFOs: abrir el otro extremo en no‑bloqueante para evitar `read==0` constante.
+- **Reapertura tras `EOF`** en el lado lector para seguir atendiendo nuevos escritores.
+- **Framing por líneas** con buffer de arrastre: procesar **solo** líneas completas terminadas en `\n`.
 
 ---
 
-## 4) Diseño de robustez (bloqueos, keep‑alive, reintentos)
+## 6) Funciones principales (por archivo)
 
-- **Ignorar `SIGPIPE`** en los tres codigos: evita abortar si se escribe sin lector, se manejan errores `EPIPE` en `write()` (10.4).  
-- **Keep‑alive de FIFO**: se abre el otro extremo en **no bloqueante** para evitar **EOF** cuando no hay escritores/lectores; p.ej. `moderator` abre `reports` en `O_WRONLY|O_NONBLOCK` además del `O_RDONLY`, solo un ejemplo.
-- **Reapertura tras EOF** (`read(...) == 0`): reabrir lado lector (`open(O_RDONLY)`) mantiene el servicio esperando nuevos escritores (10.2).
-- **Reintentos con `ENXIO`/`ENOENT`** al abrir en `O_WRONLY|O_NONBLOCK`: el servidor/lector puede no estar listo todavía (8.2).
+### 6.1 `client.cpp`
+- `openMyDownlink(o2cPath)`: abre O2C en `O_RDWR` (evita bloqueo de arranque).
+- `openUplinkWriter(c2oPath)`: abre C2O en `O_WRONLY|O_NONBLOCK` con reintentos y luego limpia `O_NONBLOCK`.
+- `sendConnectHello / sendDisconnectBye / sendUserMessage`: serializan `"[PID]-..."` y envían por C2O; manejan `EPIPE`.
+- `startsWith / trim`: utilidades de comandos.
+- `handleIncomingFromCentral(o2cFd)`: imprime ACKs/difusiones desde O2C sin romper el prompt.
+- `handleUserInput(c2oFd, pid, programPath)`: comandos `/leave`, `/share` (fork+exec), `/report <pid>`.
+- `runChatLoop(...)`: bucle con `select()` (STDIN + O2C) y bandera de salida por `SIGINT`.
 
----
+### 6.2 `central.cpp`
+- `ensureFifoExists(path)`, `getO2cPathFor(pid)`, `openWriteToClient(pid)`.
+- `nowHms()`: hora local `HH:MM:SS` segura (`localtime_r`).
+- `parseMessage(raw, pidOut, msgOut)`: extrae `pid` y cuerpo de `"[pid]-..."`.
+- `sendAck(...)`: ACK al emisor; si falla, cierra y limpia el FD del mapa.
+- `broadcastMessage(...)`: difunde a **todos menos el emisor**; limpia FDs que fallen.
+- `openReportsWriter()`: apertura robusta de `reports` (reintentos + limpiar `O_NONBLOCK`).
+- `handleReportIfAny(message, reportsFd)`: si empieza por `"reportar "`, envía `<pid>\n` a `reports` y **no** difunde.
+- `processLine(...) / processChunk(...)`: parseo → bienvenida (nuevo PID) → log → (reporte|broadcast) → ACK.
+- `spawnModerator()`: `fork()+execlp("moderator", ...)`.
+- `main()`: señales, FIFOs, bucle `select()` sobre C2O, manejo de `EINTR/EAGAIN`, reaperturas y limpieza final.
 
-## 5) Funciones
-
-### 5.1 `client.cpp`
-
-- `static volatile sig_atomic_t stopRequested;  static void handleSigint(int)`  
-  Bandera de salida segura ante `SIGINT` (Ctrl+C). Tipo `sig_atomic_t` garantiza lecturas/escrituras atómicas en presencia de señales (9.2).
-
-- `getC2oPath() / getO2cPathFor(pid)`  
-  Utilidades de **rutas** de FIFO: C2O común y O2C por PID.
-
-- `ensureFifoExists(path, mode=0666)`  
-  Crea FIFO con `mkfifo` si no existe (acepta `EEXIST`).
-
-- `openMyDownlink(o2cPath)`  
-  Abre **O2C** del cliente en **`O_RDWR`**. Abrir en lectura *y* escritura evita bloqueos si el escritor (central) aún no está conectado (8.1).
-
-- `openUplinkWriter(c2oPath)`  
-  Abre **C2O** en `O_WRONLY|O_NONBLOCK` con **reintentos** si `ENXIO/ENOENT`; luego **limpia `O_NONBLOCK`** usando `fcntl(F_SETFL, flags & ~O_NONBLOCK)` para tener escrituras bloqueantes “normales” (8.2).
-
-- `sendConnectHello / sendDisconnectBye / sendUserMessage`  
-  Serializan la línea `"[PID]-..."` y la envían por C2O. Manejan `EPIPE` con mensaje default.
-
-- `startsWith / trim`  
-  necesario para comandos (`/share`, `/report`, etc.).
-
-- `handleIncomingFromCentral(o2cFd)`  
-  Lee difusiones/ACKs desde O2C y las imprime sin arruinar el prompt de la terminal.
-
-- `handleUserInput(c2oFd, pid, programPath)`  
-  Procesa:  
-  - `/leave` ⇒ bye + salir.  
-  - `/share` ⇒ `fork()` + `execlp()` del mismo codigo (nuevo cliente con otro PID).  
-  - `/report <pid>` ⇒ “reportar pid”.  
-  - Cualquier otra cosa ⇒ mensaje normal.
-
-- `runChatLoop(c2oFd, o2cFd, pid, programPath)`  
-  Bucle principal con **`select()`** sobre `STDIN` + O2C (8.3). reacciona a `stopRequested`.
-
-### 5.2 `central.cpp`
-
-- `static volatile sig_atomic_t stopRequested;  static void handleSigint(int)`  
-  Salida ordenada ante `SIGINT` (9.2).
-
-- `kC2oPath`, `kReportsPath`  
-  Rutas **constexpr** para asegurar inmutabilidad y uso en tiempo de compilación.
-
-- `ensureFifoExists(path)`  
-  Crea FIFOs necesarias (`/tmp/orch_c2o.fifo` y `/tmp/orch_reports.fifo`).
-
-- `getO2cPathFor(pid)`  
-  Ruta de O2C específica de cada cliente.
-
-- `openWriteToClient(pid)`  
-  Asegura la O2C y la abre `O_WRONLY|O_NONBLOCK` (eliminar bloqueos de arranque).
-
-- `nowHms()`  
-  Marca temporal `HH:MM:SS` segura con `localtime_r`.
-
-- `parseMessage(raw, pidOut, msgOut)`  
-  Valida el formato `"[pid]-..."` y extrae PID + cuerpo. Maneja excepciones de `stoi` (string to int) y errores de formato.
-
-- `sendAck(writerByPid, senderPid)`  
-  Escribe `ACK` al O2C del emisor; si falla la escritura, cierra y elimina el FD del mapa `writerByPid`.
-
-- `broadcastMessage(writerByPid, senderPid, message)`  
-  Difunde a **todos menos el emisor**. Si `write` falla, cierra y borra el FD de ese receptor.
-
-- `spawnModerator()`  
-  `fork()` + `execlp("moderator", ...)`. Si falla, avisa pero no aborta el central (probado cambiando el nombre del mod).
-
-- `openReportsWriter()`  
-  Abre `reports` con reintentos (`ENXIO/ENOENT`), limpia `O_NONBLOCK`. Devuelve FD listo para `write` bloqueante.
-
-- `handleReportIfAny(message, reportsFd)`  
-  Si `message` comienza con `"reportar "`, extrae PID y escribe `"<pid>\n"` en **reports**. Devuelve `true` si consumio el mensaje (se envía solo ACK).
-
-- `processLine(rawLine, writerByPid, reportsFd)`  
-  Orquesta todo: parseo → bienvenida si es nuevo PID → log → si es reporte, **reportar + ACK**; si no, **broadcast + ACK**.
-
-- `processChunk(buffer, bytesRead, writerByPid, reportsFd)`  
-  Parte un bloque en **lineas terminadas en `\n`** y llama `processLine` por cada una (soporta múltiples líneas por lectura).
-
-- `main()`  
-  Configura señales, garantiza FIFOs, lanza moderador, abre **C2O** en `O_RDONLY|O_NONBLOCK` + **keep‑alive** `O_WRONLY|O_NONBLOCK`, y entra a un bucle `select()` sobre **C2O**. Maneja `EINTR`, `EAGAIN/EWOULDBLOCK`, y reabre C2O tras EOF.
-
-### 5.3 `moderator.cpp`
-
-- `ensureFifoExists(kReportsPath)`  
-  Garantiza FIFO de reportes.
-
-- `open(kReportsPath, O_RDONLY)` + **`keepAlive = open(..., O_WRONLY|O_NONBLOCK)`**  
-  Patrón de **keep‑alive**: si no hay escritores reales, evitar `n == 0` permanente al leer.
-
-- Bucle de lectura con **buffer** + `carry`  
-  Acumula bytes hasta encontrar `\n`, extrae **líneas completas** (PID en texto).
-
-- Contador `std::unordered_map<pid_t, int>`  
-  `++countByPid[target]` por línea válida. Si llega a **10**, intenta `kill(target, SIGKILL)` y **borra** la entrada del mapa.
-
-- Errores:  
-  - Línea inválida ⇒ registro y continuar.  
-  - `read == 0` ⇒ reabrir RD.  
-  - `EINTR` ⇒ continuar.  
-  - Otros ⇒ `perror` y salir.
+### 6.3 `moderator.cpp`
+- `ensureFifoExists(kReportsPath)`: garantiza FIFO de reportes.
+- Apertura `O_RDONLY` + **keep‑alive** `O_WRONLY|O_NONBLOCK` sobre `reports`.
+- Bucle de lectura con **buffer** y `carry` para líneas completas terminadas en `\n`.
+- `std::unordered_map<pid_t,int>`: contador por PID; al llegar a **10**, `kill(pid, SIGKILL)` y borrar del mapa.
+- Manejo de errores: líneas inválidas, `read==0` → reabrir, `EINTR` → continuar, otros → `perror` y salir.
 
 ---
 
-## 6) tipos, flags y llamadas usadas (varias son nuevas para mi, pero se entienden con la documentacion)
+## 7) Variables y estructuras clave
 
-### 6.1 Tipos POSIX y C++
-- **`pid_t`** (`<sys/types.h>`): identificador de proceso. Aquí etiqueta a cada cliente, y también a los PIDs reportados.
-- **`ssize_t`** (`read`/`write` devuelven `ssize_t`): permite distinguir **error** (`-1`), **EOF** (`0`) y **bytes positivos** leídos/escritos. Es *signed* a diferencia de `size_t`; por eso sirve para reportar `-1` en errores.
-- **`std::sig_atomic_t`** (`<csignal>`): entero atómico 💣 a nivel de señal; se usa **`volatile std::sig_atomic_t stopRequested`** para comunicación segura *handler ↔ bucle principal* ante `SIGINT`, supuestamente es la forma segura.
-- **`std::unordered_map<pid_t,int>`**: contador por PID (O(1) promedio).
-
-### 6.2 Flags y errores típicos
-- **`O_NONBLOCK`** (`open`, `fcntl`)  
-  - Para **abrir** una FIFO sin bloquear si el otro extremo no existe aún.  
-  - Luego, en FDs de escritura, se “limpia” para volver a modo bloqueante (evita lidiar con EAGAIN en cada `write`).
-
-- **`O_RDWR`** (cliente abre su O2C): evita bloqueo si no hay escritor todavía.
-
-- **Errores**  
-  - `EINTR`: llamada interrumpida por señal ⇒ reintentar.  
-  - `EPIPE`: escritura en FIFO sin lector ⇒ manejar y cerrar (gracias a ignorar `SIGPIPE`, no aborta el proceso).  
-  - `EAGAIN`/`EWOULDBLOCK`: no hay datos listos en no‑bloqueante ⇒ continuar o reintentar.  
-  - `ENXIO`/`ENOENT` al abrir: extremo remoto aún no existe ⇒ **reintentos** con `usleep`.
-
-### 6.3 Señales
-- **`SIGPIPE` ignorada**: sin esto, un `write` a FIFO sin lector mata el proceso. Se opta por manejar **`EPIPE`** en el flujo normal.
-- **`SIGINT` (Ctrl+C)**: handler minimalista que solo **marca una bandera**; el bucle principal la observa y sale ordenadamente.
-- **`SIGKILL`**: no bloqueable ni capturable; el **moderator** lo envía a PIDs con ≥10 reportes.
-
----
-
-## 7) Multiplexación con `select()`
-
-- **Central:** espera datos en **C2O** (puede ampliarse a más FDs). Con `select()` se **bloquea** hasta que C2O esté listo para leer. Devuelve cuántos FDs están listos; si `EINTR`, se repite.
-- **Cliente:** vigila **STDIN** y **O2C** simultáneamente. Así puede recibir mensajes **mientras** el usuario escribe. Se calcula `maxFd` y se pasa `maxFd+1` a `select()`.
-
----
-
-## 8) Patrones de IPC usados (y por qué)
-
-### 8.1 Abrir la FIFO del cliente (`O2C`) en **RDWR**
-Abrir en **solo lectura** (`O_RDONLY`) bloquearía hasta que el central abra la escritura. Usando **`O_RDWR`** el cliente **nunca** se bloquea al arrancar, y más tarde el central abre `O_WRONLY` cuando el cliente se presenta. Este patrón estabiliza arranque/desconexión, de otra forma se hacen deadlocks, me pasó 💀💀.
-
-### 8.2 Abrir la FIFO común (`C2O`) en **`O_WRONLY|O_NONBLOCK`** y luego **limpiar `O_NONBLOCK`**
-Abrir en `O_WRONLY` puro bloquearía hasta que el central abra lectura. Con `O_NONBLOCK`, el `open` devuelve **inmediatamente**; si falla con `ENXIO/ENOENT`, se **reintenta** (el central aún no está listo). Una vez abierto, **limpiamos `O_NONBLOCK`** con `fcntl(F_SETFL, ...)` para que los `write()` sean bloqueantes simples y no lidiar con `EAGAIN` en el camino.
-
-### 8.3 Protocolo **línea‑a‑línea** con buffer de arrastre
-Los `read()` pueden entregar **múltiples** líneas o **fracciones** de una. Usamos:
-- **`carry`** (moderator) y **`processChunk`** (central) para juntar bytes hasta `\n`.  
-- Procesamos **solo líneas completas** y dejamos en buffer el resto.  
-Esto evita “duplicar” o “romper” mensajes. Es streaming correcto.
-
----
-
-## 9) Criterios
-
-- Sin **threads**: simplifica condiciones de carrera; toda concurrencia es a nivel de procesos.
-- Limpieza: cierre de FDs, borrado del mapa al expulsar para no crecer en memoria.
-
----
-
-## 10) Errores y casos criticos
-
-1. **EOF en FIFO (`read==0`)**: significa que no hay escritor/lector del otro lado. Reabrimos el extremo de lectura y seguimos esperando.
-2. **`EINTR`**: `select`/`read` interrumpidos por señal (p.ej., `SIGINT`) ⇒ continuar; el bucle saldrá por la bandera.
-3. **`EPIPE`** (escritura sin lector): se informa y se cierra el FD. Gracias a ignorar `SIGPIPE`, el proceso no aborta.
-4. **`EAGAIN/EWOULDBLOCK`**: en no bloqueante, no hay datos/listo ⇒ seguir (cliente) o reintentar (aperturas).
-5. **Líneas inválidas**: se loguean y descartan; el proceso **no** termina por entradas corruptas.
-6. **`kill` fallido** (`ESRCH`): el proceso reportado ya no existe; se informa y se borra el contador igualmente.
-
----
-
-## 11) Variables y estructuras 
-
-### 11.1 `central.cpp`
-- `FdByPid writerByPid` — `unordered_map<pid_t,int>`: mapea **PID → FD** de su **O2C**. Se depura al fallar escrituras.
+### 7.1 `central.cpp`
+- `FdByPid writerByPid` — `unordered_map<pid_t,int>`: **PID → FD(O2C)**; se limpia en fallos de `write()`.
 - `const char* kC2oPath`, `kReportsPath` — rutas de FIFOs comunes.
+- `int reportsFd` — descriptor de `reports`.
+- `int c2oRd`, `int keepAlive` — extremos de lectura y keep‑alive para C2O.
 - `char buf[4096]` — buffer de lectura desde C2O; procesado por `processChunk`.
-- `int reportsFd` — descriptor de **reports** para hablar con `moderator`.
-- `int c2oRd`, `int keepAlive` — extremos de lectura y *keep‑alive* de C2O.
-- `volatile sig_atomic_t stopRequested` — bandera de salida por señal.
+- `volatile sig_atomic_t stopRequested` — bandera de salida por `SIGINT`.
 
-### 11.2 `client.cpp`
-- `int o2cFd` — lector de mensajes desde el central (downlink del cliente).
-- `int c2oFd` — escritor hacia el central (uplink común).
-- `pid_t myPid` — PID local, usado en el framing de cada línea.
-- Helpers de texto: `startsWith`, `trim`.
+### 7.2 `client.cpp`
+- `int o2cFd` — lector de O2C (downlink).
+- `int c2oFd` — escritor C2O (uplink).
+- `pid_t myPid` — PID local para framing.
+- Helpers: `startsWith`, `trim`.
 
-### 11.3 `moderator.cpp`
-- `int rd` — lector de **reports**.
-- `int keepAlive` — escritor no bloqueante para mantener viva la FIFO.
+### 7.3 `moderator.cpp`
+- `int rd` — lector de `reports`.
+- `int keepAlive` — escritor no‑bloqueante auxiliar (keep‑alive de FIFO).
 - `std::unordered_map<pid_t,int> countByPid` — contadores por PID.
-- `std::string carry` — buffer de arrastre para recomponer líneas por `\n`.
+- `std::string carry` — buffer de arrastre para recomponer líneas.
+
+---
+
+## 8) Entorno
+
+- Probado en **Ubuntu 24.04**.
+- Sin hilos ni semáforos; solo procesos + FIFOs + `select()`.
