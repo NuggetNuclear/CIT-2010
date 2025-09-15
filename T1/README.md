@@ -40,12 +40,13 @@ Si se esta usando WSL, compilar dentro de la distro Linux.
 
 ---
 
-## Ejecución mínima
-1) **Orquestador** (lanza también al moderador):
+## Ejecución
+1) **Orquestador** (lanza también al moderador en caso de definir moderator en path, si no, se ejecuta moderador por comando):
 ```bash
 ./central
+./moderator
 ```
-> `central` intenta ejecutar `moderator` mediante `execlp("moderator", ...)`. Asegurarse de que el binario **esté en el mismo directorio**, de no ser asi, ejecutara sola la central, dejara un mensaje en la terminal, ejecutar el moderador con ./moderator.
+> `central` intenta ejecutar `moderator` mediante `execlp("moderator", ...)` si esta definido en el path, de no ser asi, se ejecuta ./moderator con normalidad, esto es solo para automatizar el mod, en un flujo normal de ejecucion, ignorar el error (se maneja para no cerrar central)
 
 2) **Clientes** (en **distintas terminales**):
 ```bash
