@@ -60,6 +60,9 @@ Respuestas de la central:
 
 ## 3) Flujo detallado de mensajes
 
+**Algoritmo de planificación**
+La central procesa eventos en orden de llegada (FIFO) sobre el canal C2O. La multiplexación es con select() (E/S no bloqueante). Cada mensaje se delimita por \n, se reconoce el emisor por PID y se difunde de forma serializada a todos los demás clientes. No hay prioridades.
+
 ### 3.1 Conexión de cliente
 1. `client` crea/abre su **O2C** (`/tmp/orch_o2c_<PID>.fifo`) en **RDWR** para evitar bloqueos si el otro extremo aún no está listo (8.1).
 2. Abre **C2O** en **WR** con reintentos; limpia `O_NONBLOCK` para simplificar escrituras (8.2).
