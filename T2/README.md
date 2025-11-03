@@ -43,7 +43,6 @@ Tarea2_SO/
 
 3. **Probar distintos escenarios**
    - Para usar un ejemplo distinto, basta con **reemplazar el contenido de `config.txt`** por uno de los ejemplos de configuración (por ejemplo, `Ejemplo 1`, `Ejemplo 2`, etc.).
-   - No es necesario cambiar el nombre del archivo ni modificar el código fuente.
    - Luego, simplemente vuelve a ejecutar:
      ```bash
      make run
