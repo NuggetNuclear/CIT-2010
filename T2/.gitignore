@@ -1,0 +1,6 @@
+simulador
+*.o
+*.out
+*.log
+*.zip
+.DS_Store
