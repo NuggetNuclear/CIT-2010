@@ -81,9 +81,12 @@ public:
           contadorProcesos(0), pageFaults(0), contadorReloj(0), gen(rd())
     {
 
+        //  Parte 1: Configurar memoria física y virtual -----------------------
+
         memoriaFisicaKB = memoriaFisicaMB * 1024;
 
-        // Generar tamaño de memoria virtual (1.5 a 4.5 veces la física)
+        // Generar tamaño de memoria virtual (1.5 a 4.5 veces la física) -------
+
         uniform_real_distribution<> dist(1.5, 4.5);
         double factor = dist(gen);
         memoriaVirtualKB = (int)(memoriaFisicaKB * factor);
@@ -102,11 +105,10 @@ public:
         cout << BLUE << "Marcos en SWAP: " << RESET << numMarcosSwap << endl;
         cout << "Rango de tamaño de procesos: " << minTamProceso << "-" << maxTamProceso << " MB" << endl;
         cout << YELLOW << "Política de reemplazo: LRU (Least Recently Used)" << RESET << endl;
-        cout << BOLD << CYAN << "===============================================\n"
-             << RESET << endl;
+        cout << BOLD << CYAN << "===============================================\n" << RESET << endl;
     }
 
-    ~SimuladorPaginacion()
+    ~SimuladorPaginacion() // DESTRUIIIRRRRRRRRRR RAHHHH
     {
         for (auto &par : procesos)
         {
@@ -118,6 +120,8 @@ public:
         }
     }
 
+    // Parte 2: Gestión de procesos y páginas
+    
     bool crearProceso()
     {
         uniform_int_distribution<> dist(minTamProceso, maxTamProceso);
@@ -194,7 +198,9 @@ public:
         return true;
     }
 
-    void finalizarProcesoAleatorio()
+    // Finaliza un proceso aleatorio
+
+    void finalizarProcesoAleatorio() 
     {
         if (procesos.empty())
             return;
