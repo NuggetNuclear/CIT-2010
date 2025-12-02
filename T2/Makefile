@@ -1,22 +1,16 @@
 CC = gcc
-CFLAGS = -Wall -Wextra -pthread -g
-
-BIN = simulador
+CFLAGS = -std=c11 -Wall -Wextra -O2
+LDFLAGS = -pthread
+TARGET = simulador
 SRC = src/main.c src/config.c
 
-all: $(BIN)
+all: $(TARGET)
 
-$(BIN): $(SRC)
-	$(CC) $(CFLAGS) $(SRC) -o $(BIN)
+$(TARGET): $(SRC)
+	$(CC) $(CFLAGS) $(SRC) -o $(TARGET) $(LDFLAGS)
 
-run: all
-	@if [ -z "$(CONFIG)" ]; then \
-		echo "Usando config.txt por defecto"; \
-		./$(BIN); \
-	else \
-		echo "Usando $(CONFIG)"; \
-		./$(BIN) "$(CONFIG)"; \
-	fi
+run: $(TARGET)
+	./$(TARGET) config.txt
 
 clean:
-	rm -f $(BIN)
+	rm -f $(TARGET)
