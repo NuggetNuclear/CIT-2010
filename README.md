@@ -4,7 +4,7 @@ Repositorio para las tareas del ramo Sistemas Operativos.
 
 ## Qué hay
 
-Carpetas por tarea (`T1/`, `T2/`, `T2/`), cada una con su **código** y archivos relacionados.
+Carpetas por tarea (`T1/`, `T2/`, `T3/`), cada una con su **código** y archivos relacionados.
 
 **Commits frecuentes** que registran mi avance paso a paso, para ver **la evolución del código** en el tiempo.
 - Errores, intentos y refactors también quedan 💀💀💀.
